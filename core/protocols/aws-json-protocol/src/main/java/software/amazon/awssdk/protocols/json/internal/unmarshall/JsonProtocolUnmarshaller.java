@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import software.amazon.awssdk.annotations.SdkInternalApi;
 import software.amazon.awssdk.annotations.ThreadSafe;
@@ -60,13 +61,70 @@ public final class JsonProtocolUnmarshaller {
     private final JsonUnmarshallerRegistry registry;
 
     private final JsonNodeParser parser;
+    private final boolean rpcv2;
 
     private JsonProtocolUnmarshaller(Builder builder) {
         this.parser = builder.parser;
         this.instantStringToValue = StringToInstant.create(builder.defaultTimestampFormats.isEmpty() ?
                                                            new EnumMap<>(MarshallLocation.class) :
                                                            new EnumMap<>(builder.defaultTimestampFormats));
-        this.registry = createUnmarshallerRegistry(instantStringToValue);
+        this.rpcv2 = builder.rpcv2;
+        this.registry = rpcv2 ? cborRegistry(instantStringToValue) : createUnmarshallerRegistry(instantStringToValue);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static final class DirectUnmarshaller<T> implements JsonUnmarshaller<T> {
+        private final Function<Number, T> convert;
+
+        private DirectUnmarshaller(Function<Number, T> convert) {
+            this.convert = convert;
+        }
+
+        @Override
+        public T unmarshall(JsonUnmarshallerContext context, JsonNode jsonContent, SdkField<T> field) {
+            return jsonContent != null && !jsonContent.isNull() ? convert.apply((Number) jsonContent.asEmbeddedObject()) : null;
+        }
+    }
+
+
+    private static final DirectUnmarshaller<Byte> BYTE_UNMARSHALLER = new DirectUnmarshaller<>(Number::byteValue);
+    private static final DirectUnmarshaller<Short> SHORT_UNMARSHALLER = new DirectUnmarshaller<>(Number::shortValue);
+    private static final DirectUnmarshaller<Integer> INT_UNMARSHALLER = new DirectUnmarshaller<>(Number::intValue);
+    private static final DirectUnmarshaller<Long> LONG_UNMARSHALLER = new DirectUnmarshaller<>(Number::longValue);
+    private static final DirectUnmarshaller<Float> FLOAT_UNMARSHALLER = new DirectUnmarshaller<>(Number::floatValue);
+    private static final DirectUnmarshaller<Double> DOUBLE_UNMARSHALLER = new DirectUnmarshaller<>(Number::doubleValue);
+
+    private static JsonUnmarshallerRegistry cborRegistry(StringToValueConverter.StringToValue<Instant> instantStringToValue) {
+        return JsonUnmarshallerRegistry
+            .builder()
+            .statusCodeUnmarshaller(MarshallingType.INTEGER, (context, json, f) -> context.response().statusCode())
+            .headerUnmarshaller(MarshallingType.STRING, HeaderUnmarshaller.STRING)
+            .headerUnmarshaller(MarshallingType.INTEGER, HeaderUnmarshaller.INTEGER)
+            .headerUnmarshaller(MarshallingType.LONG, HeaderUnmarshaller.LONG)
+            .headerUnmarshaller(MarshallingType.SHORT, HeaderUnmarshaller.SHORT)
+            .headerUnmarshaller(MarshallingType.DOUBLE, HeaderUnmarshaller.DOUBLE)
+            .headerUnmarshaller(MarshallingType.BOOLEAN, HeaderUnmarshaller.BOOLEAN)
+            .headerUnmarshaller(MarshallingType.INSTANT, HeaderUnmarshaller.createInstantHeaderUnmarshaller(instantStringToValue))
+            .headerUnmarshaller(MarshallingType.FLOAT, HeaderUnmarshaller.FLOAT)
+            .headerUnmarshaller(MarshallingType.LIST, HeaderUnmarshaller.LIST)
+
+            .payloadUnmarshaller(MarshallingType.STRING, new SimpleTypeJsonUnmarshaller<>(StringToValueConverter.TO_STRING))
+            .payloadUnmarshaller(MarshallingType.INTEGER, INT_UNMARSHALLER)
+            .payloadUnmarshaller(MarshallingType.LONG, LONG_UNMARSHALLER)
+            .payloadUnmarshaller(MarshallingType.BYTE, BYTE_UNMARSHALLER)
+            .payloadUnmarshaller(MarshallingType.SHORT, SHORT_UNMARSHALLER)
+            .payloadUnmarshaller(MarshallingType.FLOAT, FLOAT_UNMARSHALLER)
+            .payloadUnmarshaller(MarshallingType.DOUBLE, DOUBLE_UNMARSHALLER)
+            .payloadUnmarshaller(MarshallingType.BIG_DECIMAL, new SimpleTypeJsonUnmarshaller<>(
+                StringToValueConverter.TO_BIG_DECIMAL))
+            .payloadUnmarshaller(MarshallingType.BOOLEAN, new SimpleTypeJsonUnmarshaller<>(StringToValueConverter.TO_BOOLEAN))
+            .payloadUnmarshaller(MarshallingType.SDK_BYTES, JsonProtocolUnmarshaller::unmarshallSdkBytes)
+            .payloadUnmarshaller(MarshallingType.INSTANT, new SimpleTypeJsonUnmarshaller<>(instantStringToValue))
+            .payloadUnmarshaller(MarshallingType.SDK_POJO, JsonProtocolUnmarshaller::unmarshallStructured)
+            .payloadUnmarshaller(MarshallingType.LIST, JsonProtocolUnmarshaller::unmarshallList)
+            .payloadUnmarshaller(MarshallingType.MAP, JsonProtocolUnmarshaller::unmarshallMap)
+            .payloadUnmarshaller(MarshallingType.DOCUMENT, JsonProtocolUnmarshaller::unmarshallDocument)
+            .build();
     }
 
     private static JsonUnmarshallerRegistry createUnmarshallerRegistry(
@@ -279,6 +337,7 @@ public final class JsonProtocolUnmarshaller {
 
         private JsonNodeParser parser;
         private Map<MarshallLocation, TimestampFormatTrait.Format> defaultTimestampFormats;
+        private boolean rpcv2;
 
         private Builder() {
         }
@@ -298,6 +357,11 @@ public final class JsonProtocolUnmarshaller {
          */
         public Builder defaultTimestampFormats(Map<MarshallLocation, TimestampFormatTrait.Format> formats) {
             this.defaultTimestampFormats = formats;
+            return this;
+        }
+
+        public Builder rpcv2(boolean rpcv2) {
+            this.rpcv2 = rpcv2;
             return this;
         }
 

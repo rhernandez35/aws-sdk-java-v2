@@ -55,10 +55,12 @@ public final class JsonNodeParser {
 
     private final boolean removeErrorLocations;
     private final JsonFactory jsonFactory;
+    private final boolean cbor;
 
     private JsonNodeParser(Builder builder) {
         this.removeErrorLocations = builder.removeErrorLocations;
         this.jsonFactory = builder.jsonFactory;
+        this.cbor = builder.cbor;
     }
 
     /**
@@ -139,6 +141,37 @@ public final class JsonNodeParser {
     }
 
     private JsonNode parseToken(JsonParser parser, JsonToken token) throws IOException {
+        return cbor ? parseTokenCbor(parser, token) : parseTokenJson(parser, token);
+    }
+
+    private JsonNode parseTokenCbor(JsonParser parser, JsonToken token) throws IOException {
+        if (token == null) {
+            return null;
+        }
+        switch (token) {
+            case VALUE_STRING:
+                return new StringJsonNode(parser.getText());
+            case VALUE_FALSE:
+                return new BooleanJsonNode(false);
+            case VALUE_TRUE:
+                return new BooleanJsonNode(true);
+            case VALUE_NULL:
+                return NullJsonNode.instance();
+            case VALUE_NUMBER_FLOAT:
+            case VALUE_NUMBER_INT:
+                return new EmbeddedObjectJsonNode(parser.getNumberValue());
+            case START_OBJECT:
+                return parseObject(parser);
+            case START_ARRAY:
+                return parseArray(parser);
+            case VALUE_EMBEDDED_OBJECT:
+                return new EmbeddedObjectJsonNode(parser.getEmbeddedObject());
+            default:
+                throw new IllegalArgumentException("Unexpected JSON token - " + token);
+        }
+    }
+
+    private JsonNode parseTokenJson(JsonParser parser, JsonToken token) throws IOException {
         if (token == null) {
             return null;
         }
@@ -192,6 +225,7 @@ public final class JsonNodeParser {
     public static final class Builder {
         private JsonFactory jsonFactory = DEFAULT_JSON_FACTORY;
         private boolean removeErrorLocations = false;
+        private boolean cbor = false;
 
         private Builder() {
         }
@@ -218,6 +252,11 @@ public final class JsonNodeParser {
          */
         public Builder jsonFactory(JsonFactory jsonFactory) {
             this.jsonFactory = jsonFactory;
+            return this;
+        }
+
+        public Builder cbor(boolean cbor) {
+            this.cbor = cbor;
             return this;
         }
 

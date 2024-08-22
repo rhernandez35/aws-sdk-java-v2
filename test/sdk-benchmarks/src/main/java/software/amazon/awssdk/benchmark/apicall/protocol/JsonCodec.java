@@ -68,7 +68,9 @@ public final class JsonCodec {
             JsonProtocolUnmarshaller unmarshaller =
                 JsonProtocolUnmarshaller
                     .builder()
+                    .rpcv2(behavior == ProtocolBehavior.SMITHY_RPC_V2_CBOR)
                     .parser(JsonNodeParser.builder()
+                                .cbor(behavior == ProtocolBehavior.SMITHY_RPC_V2_CBOR)
                                           .jsonFactory(behavior.structuredJsonFactory().getJsonFactory())
                                           .build())
                     .defaultTimestampFormats(behavior.timestampFormats())
@@ -161,7 +163,7 @@ public final class JsonCodec {
                                                                       .protocol(AwsJsonProtocol.AWS_JSON)
                                                                       .contentType("application/json")
                                                                       .build();
-            
+
             BaseAwsJsonProtocolFactory factory = AwsJsonProtocolFactory.builder()
                                                                        .protocol(AwsJsonProtocol.AWS_JSON)
                                                                        .clientConfiguration(EMPTY_CLIENT_CONFIGURATION)

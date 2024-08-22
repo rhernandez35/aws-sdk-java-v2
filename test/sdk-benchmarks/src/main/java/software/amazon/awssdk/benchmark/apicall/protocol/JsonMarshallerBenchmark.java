@@ -23,6 +23,7 @@ import org.openjdk.jmh.annotations.Fork;
 import org.openjdk.jmh.annotations.Level;
 import org.openjdk.jmh.annotations.Measurement;
 import org.openjdk.jmh.annotations.Mode;
+import org.openjdk.jmh.annotations.OutputTimeUnit;
 import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
@@ -41,18 +42,25 @@ import software.amazon.awssdk.services.protocolsmithyrpcv2.model.GetMetricDataRe
  * Benchmarking for running with different protocols.
  */
 @State(Scope.Benchmark)
-@Warmup(iterations = 3, time = 15, timeUnit = TimeUnit.SECONDS)
-@Measurement(iterations = 5, time = 10, timeUnit = TimeUnit.SECONDS)
-@Fork(2) // To reduce difference between each run
-@BenchmarkMode(Mode.Throughput)
+@Warmup(iterations = 3, time = 3, timeUnit = TimeUnit.SECONDS)
+@Measurement(iterations = 5, time = 5, timeUnit = TimeUnit.SECONDS)
+@Fork(1) // To reduce difference between each run
+@BenchmarkMode(Mode.AverageTime)
+@OutputTimeUnit(TimeUnit.NANOSECONDS)
 public class JsonMarshallerBenchmark {
 
     @State(Scope.Thread)
     public static class MarshallingState {
-        @Param({"small", "medium", "big"})
+        @Param({
+            "small"
+            // , "medium", "big"
+        })
         public String size;
 
-        @Param({"smithy-rpc-v2", "aws-json"})
+        @Param({
+            "smithy-rpc-v2",
+            "aws-json"
+        })
         public String protocol;
 
         GetMetricDataResponse data;
@@ -115,7 +123,7 @@ public class JsonMarshallerBenchmark {
     public static void main(String... args) throws Exception {
         Options opt = new OptionsBuilder()
             .include(JsonMarshallerBenchmark.class.getSimpleName())
-            .addProfiler(StackProfiler.class)
+            // .addProfiler(StackProfiler.class)
             .build();
         new Runner(opt).run();
     }
